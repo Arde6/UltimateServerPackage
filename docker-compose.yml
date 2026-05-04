@@ -21,7 +21,7 @@ services:
 
   # Git (Forgejo)
   git:
-    image: codeberg.org/forgejo/forgejo:14
+    image: codeberg.org/forgejo/forgejo:15
     restart: always
     environment:
       - USER_UID=1000
@@ -31,45 +31,41 @@ services:
     ports:
       - "222:22" # Keep this so you can SSH clone code
 
+  # Database for Nextcloud
+  cloud-db:
+    image: mariadb:latest
+    restart: always
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    env_file:
+      - ./.env
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+    volumes:
+      - ./data/c-db:/var/lib/mysql
+
   # Cloud Storage (Nextcloud)
   cloud:
     image: nextcloud:latest
     restart: always
-    environment:
-      - SQLITE_DATABASE=nextcloud
+    depends_on:
+      - cloud-db
+    env_file:
+      - .env
     volumes:
       - ./data/cloud:/var/www/html/data
       
-  # WebCafe (Tailchat + Database)
-  cafe:
-    image: moonrailgun/tailchat:latest # Use the pre-built image instead of 'build'
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - SERVICES=core/gateway,core/user/*.service.js,core/group/*.service.js,core/chat/*.service.js,core/file,core/plugin/registry,core/config
-      - PORT=3000
-    depends_on:
-      - cafe-db
-      - cafe-redis
-      - cafe-storage
-
-  cafe-db:
-    image: mongo:4
-    restart: always
-    volumes:
-      - ./data/cafe-db:/data/db
-
-  cafe-redis:
-    image: redis:alpine
-    restart: always
-
-  cafe-storage:
-    image: minio/minio
+  # TeamSpeak
+  teamspeak:
+    image: teamspeak:latest
     restart: always
     environment:
-      MINIO_ROOT_USER: tailchat
-      MINIO_ROOT_PASSWORD: com.msgbyte.tailchat
+      - TS3SERVER_LICENSE=accept
     volumes:
-      - ./data/cafe-storage:/data
-    command: minio server /data --console-address ":9001"
+      - ./data/teamspeak:/var/ts3server
+    ports:
+      - "9987:9987/udp"
+      - "10011:10011"
+      - "30033:30033"

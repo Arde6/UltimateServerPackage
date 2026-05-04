@@ -1,0 +1,75 @@
+services:
+  # Nginx Proxy Manager (The Front Door)
+  proxy:
+    image: jc21/nginx-proxy-manager:latest
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "81:81"
+    volumes:
+      - ./data/proxy:/data
+      - ./data/letsencrypt:/etc/letsencrypt
+
+  # Landing Page (Your CV)
+  landing:
+    image: nginx:alpine
+    restart: always
+    volumes:
+      - ./landing-page:/usr/share/nginx/html:ro
+    # No ports needed here! Proxy handles it.
+
+  # Git (Forgejo)
+  git:
+    image: codeberg.org/forgejo/forgejo:14
+    restart: always
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000 # Fixed the colon to an underscore
+    volumes:
+      - ./data/git:/data
+    ports:
+      - "222:22" # Keep this so you can SSH clone code
+
+  # Cloud Storage (Nextcloud)
+  cloud:
+    image: nextcloud:latest
+    restart: always
+    environment:
+      - SQLITE_DATABASE=nextcloud
+    volumes:
+      - ./data/cloud:/var/www/html/data
+      
+  # WebCafe (Tailchat + Database)
+  cafe:
+    image: moonrailgun/tailchat:latest # Use the pre-built image instead of 'build'
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVICES=core/gateway,core/user/*.service.js,core/group/*.service.js,core/chat/*.service.js,core/file,core/plugin/registry,core/config
+      - PORT=3000
+    depends_on:
+      - cafe-db
+      - cafe-redis
+      - cafe-storage
+
+  cafe-db:
+    image: mongo:4
+    restart: always
+    volumes:
+      - ./data/cafe-db:/data/db
+
+  cafe-redis:
+    image: redis:alpine
+    restart: always
+
+  cafe-storage:
+    image: minio/minio
+    restart: always
+    environment:
+      MINIO_ROOT_USER: tailchat
+      MINIO_ROOT_PASSWORD: com.msgbyte.tailchat
+    volumes:
+      - ./data/cafe-storage:/data
+    command: minio server /data --console-address ":9001"
